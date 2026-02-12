@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Rutina de Ejercicios</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link rel="stylesheet" href="estilo.css">
+</head>
+
+<body>
+<div class="container">
+
+<div id="calendar"></div>
+
+<button id="startBtn">▶</button>
+
+<div class="controls">
+  <button onclick="pause()">⏸</button>
+  <button onclick="resetAll()">⛔</button>
+</div>
+
+<div id="cycle"></div>
+<div id="exercise">Iniciar Rutina</div>
+<div id="next"></div>
+
+<div class="timer-wrap">
+  <svg width="220" height="220">
+    <circle cx="110" cy="110" r="95" stroke="#333" stroke-width="10" fill="none"/>
+    <circle id="ring" cx="110" cy="110" r="95"
+      stroke="#888"
+      stroke-width="10"
+      fill="none"
+      stroke-linecap="round"
+      stroke-dasharray="597"
+      stroke-dashoffset="597"
+      transform="rotate(-90 110 110)" />
+  </svg>
+  <div id="timer">00</div>
+</div>
+
+<div id="editor">
+  <label>Preparación <input id="prepTime" type="number" value="5"></label>
+  <label>Ejercicio <input id="workTime" type="number" value="15"></label>
+  <label>Descanso <input id="restTime" type="number" value="30"></label>
+  <label>Ciclos <input id="cycles" type="number" value="14"></label>
+</div>
+
+</div>
+
+<script>
+/* ===== REFS ===== */
+const startBtn = document.getElementById("startBtn");
+const editor = document.getElementById("editor");
+const prepTime = document.getElementById("prepTime");
+const workTime = document.getElementById("workTime");
+const restTime = document.getElementById("restTime");
+const cycles = document.getElementById("cycles");
+const timer = document.getElementById("timer");
+const cycleDiv = document.getElementById("cycle");
+const ring = document.getElementById("ring");
+
+/* ===== EJERCICIOS ===== */
+const exercises = [
+  { name: "Rodillas arriba", color: "#e74c3c" },
+  { name: "Puñetazos", color: "#3498db" },
+  { name: "Talones atrás", color: "#f39c12" },
+  { name: "Jumping Jacks", color: "#2ecc71" }
+];
+
+/* ===== AUDIO ===== */
+const whistle = new Audio("https://actions.google.com/sounds/v1/sports/referee_whistle.ogg");
+const speak = t => speechSynthesis.speak(new SpeechSynthesisUtterance(t));
+
+/* ===== STATE ===== */
+let PREP, WORK, REST, TOTAL;
+let cycle = 1, index = 0, time = 0, maxTime = 1;
+let interval, paused = false;
+
+const circumference = 597;
+
+/* ===== HELPERS ===== */
+function rgba(hex, a) {
+  const r = parseInt(hex.substr(1,2),16);
+  const g = parseInt(hex.substr(3,2),16);
+  const b = parseInt(hex.substr(5,2),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+function setRing(p) {
+  ring.style.strokeDashoffset = circumference * (1 - p);
+}
+
+/* ===== FLOW ===== */
+startBtn.onclick = () => {
+  saveToday();
+
+  PREP = +prepTime.value;
+  WORK = +workTime.value;
+  REST = +restTime.value;
+  TOTAL = +cycles.value;
+
+  startBtn.style.display = "none";
+  editor.style.display = "none";
+  document.querySelector(".controls").style.display = "flex";
+
+  startPrep();
+};
+
+function tick(cb) {
+  clearInterval(interval);
+  interval = setInterval(() => {
+    if (!paused) {
+      time--;
+      timer.innerText = time;
+      setRing(time / maxTime);
+      cb();
+    }
+  }, 1000);
+}
+
+function startPrep() {
+  document.body.style.background = "#111";
+  ring.style.stroke = "rgba(255,255,255,0.3)";
+  exercise.innerText = "Prepárate";
+  next.innerText = "";
+  speak("Prepárate");
+
+  maxTime = PREP;
+  time = PREP;
+
+  tick(() => {
+    if (time === 1) whistle.play();
+    if (time === 0) startExercise();
+  });
+}
+
+function startExercise() {
+  const cur = exercises[index];
+  const nextEx = exercises[(index + 1) % exercises.length];
+
+  document.body.style.background = cur.color;
+  ring.style.stroke = rgba(cur.color, 0.45);
+
+  exercise.innerText = cur.name;
+  next.innerText = "Próximo: " + nextEx.name;
+  cycleDiv.innerText = `Ciclo ${cycle}/${TOTAL}`;
+
+  speak(cur.name);
+  whistle.play();
+
+  maxTime = WORK;
+  time = WORK;
+
+  tick(() => {
+    if (time === 0) {
+      index++;
+      if (index === exercises.length) {
+        index = 0;
+        if (cycle < TOTAL) rest();
+        else finish();
+      } else startExercise();
+    }
+  });
+}
+
+function rest() {
+  document.body.style.background = "#555";
+  ring.style.stroke = "rgba(255,255,255,0.3)";
+  exercise.innerText = "Descanso";
+  next.innerText = "";
+  speak("Descanso");
+
+  maxTime = REST;
+  time = REST;
+
+  tick(() => {
+    if (time === 0) {
+      cycle++;
+      startExercise();
+    }
+  });
+}
+
+/* ===== CONTROLS ===== */
+function pause() { paused = !paused; }
+function resetAll() { location.reload(); }
+
+function finish() {
+  exercise.innerText = "Rutina completada ✔";
+  timer.innerText = "";
+}
+
+/* ===== CALENDAR ===== */
+function saveToday() {
+  const d = new Date().toISOString().slice(0,10);
+  const days = JSON.parse(localStorage.getItem("hiitDays") || "[]");
+  if (!days.includes(d)) {
+    days.push(d);
+    localStorage.setItem("hiitDays", JSON.stringify(days));
+  }
+  renderCalendar();
+}
+
+function toggleDay(d) {
+  let days = JSON.parse(localStorage.getItem("hiitDays") || "[]");
+  days.includes(d) ? days = days.filter(x => x !== d) : days.push(d);
+  localStorage.setItem("hiitDays", JSON.stringify(days));
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const cal = document.getElementById("calendar");
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const max = new Date(y, m + 1, 0).getDate();
+  const done = JSON.parse(localStorage.getItem("hiitDays") || "[]");
+
+  cal.innerHTML = `
+    <div class="calendar-header">${now.toLocaleString("es",{month:"long"})}</div>
+    <div class="calendar-grid"></div>
+  `;
+
+  const grid = cal.querySelector(".calendar-grid");
+  for (let i = 1; i <= max; i++) {
+    const d = `${y}-${String(m+1).padStart(2,"0")}-${String(i).padStart(2,"0")}`;
+    const el = document.createElement("div");
+    el.className = "calendar-day" + (done.includes(d) ? " done" : "");
+    el.textContent = i;
+    el.onclick = () => toggleDay(d);
+    grid.appendChild(el);
+  }
+}
+
+renderCalendar();
+</script>
+
+</body>
+</html>
